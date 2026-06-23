@@ -16,9 +16,9 @@ addopts =
     --cov-report=html
     --cov-report=term-missing
     --cov-report=lcov
-#    --cov-exclude=tests/*
-#    --cov-exclude=*/migrations/*
-#    --cov-exclude=*/__pycache__/*
+    --cov-exclude=tests/*
+    --cov-exclude=*/migrations/*
+    --cov-exclude=*/__pycache__/*
 
 # Test paths
 testpaths = tests

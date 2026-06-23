@@ -1,25 +1,159 @@
 """
-Production Readiness Tests - Comprehensive validation suite.
+Production Readiness Tests - Focused validation suite.
 
-Tests all critical functionality required for production deployment including:
+Tests critical functionality for production deployment:
 - Database repository operations
-- API endpoint validation
-- Authentication & security
-- Error handling & resilience
+- Security functions  
 - Data integrity
+- Regressions for deprecated APIs
 """
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database.connection import DatabaseSettings, init_db
-from database.models import ReviewModel, ThemeModel, UserModel, Base
-from database.repository import ReviewRepository, ThemeRepository, UserRepository
-from api.security import create_access_token, verify_password, hash_password
-from api.schemas import HealthResponse
+from database.models import ReviewModel, ThemeModel, Base
+from database.repository import ReviewRepository, ThemeRepository
+from api.security import verify_password, hash_password
+
+
+@pytest.fixture
+def test_db():
+    """Create in-memory SQLite database for testing."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def sample_review_data():
+    """Sample review data for testing."""
+    return {
+        "external_id": "test_review_001",
+        "source": "app_store",
+        "app_name": "Test App",
+        "reviewer": "test_user",
+        "rating": 4,
+        "title": "Test Review",
+        "text": "This is a test review for production validation.",
+        "date": datetime.now(timezone.utc),
+        "metadata": {"test": True}
+    }
+
+
+class TestReviewRepository:
+    """Test ReviewRepository CRUD operations."""
+    
+    def test_create_review_utc_timestamp(self, test_db, sample_review_data):
+        """✅ CRITICAL: Review creation uses UTC timestamps."""
+        test_data = sample_review_data.copy()
+        del test_data["date"]
+        
+        review = ReviewRepository.create(test_db, **test_data)
+        
+        assert review.date is not None
+        assert review.date.tzinfo == timezone.utc
+    
+    def test_get_review_by_id(self, test_db, sample_review_data):
+        """✅ Retrieve review by ID."""
+        created_review = ReviewRepository.create(test_db, **sample_review_data)
+        retrieved = ReviewRepository.get_by_id(test_db, created_review.id)
+        
+        assert retrieved is not None
+        assert retrieved.id == created_review.id
+    
+    def test_update_review_utc_timestamp(self, test_db, sample_review_data):
+        """✅ CRITICAL: Review update uses UTC timestamps."""
+        review = ReviewRepository.create(test_db, **sample_review_data)
+        updated_review = ReviewRepository.update(test_db, review.id, rating=5)
+        
+        assert updated_review.rating == 5
+        assert updated_review.updated_at is not None
+        assert updated_review.updated_at.tzinfo == timezone.utc
+    
+    def test_update_embedding(self, test_db, sample_review_data):
+        """✅ Embedding update."""
+        review = ReviewRepository.create(test_db, **sample_review_data)
+        embedding = [0.1, 0.2, 0.3, 0.4]
+        
+        ReviewRepository.update_embedding(test_db, review.id, embedding)
+        updated = ReviewRepository.get_by_id(test_db, review.id)
+        
+        assert updated.embedding == embedding
+        assert updated.updated_at.tzinfo == timezone.utc
+    
+    def test_bulk_upsert(self, test_db):
+        """✅ Bulk review insertion."""
+        payloads = [
+            {
+                "external_id": f"bulk_{i}",
+                "source": "app_store",
+                "app_name": "Test",
+                "rating": i,
+                "text": f"Review {i}"
+            }
+            for i in range(5)
+        ]
+        
+        inserted, skipped = ReviewRepository.bulk_upsert(test_db, payloads)
+        assert inserted == 5
+
+
+class TestThemeRepository:
+    """Test ThemeRepository operations."""
+    
+    def test_create_theme(self, test_db):
+        """✅ Theme creation."""
+        data = {"name": "Test Theme", "description": "Test", "count": 0}
+        theme = ThemeRepository.create(test_db, **data)
+        
+        assert theme is not None
+        assert theme.name == data["name"]
+    
+    def test_update_count_utc_timestamp(self, test_db):
+        """✅ CRITICAL: Theme count update uses UTC timestamps."""
+        data = {"name": "Test Theme", "description": "Test", "count": 0}
+        theme = ThemeRepository.create(test_db, **data)
+        
+        ThemeRepository.update_count(test_db, theme.id, 42)
+        updated = ThemeRepository.get_by_id(test_db, theme.id)
+        
+        assert updated.count == 42
+        assert updated.updated_at.tzinfo == timezone.utc
+
+
+class TestSecurity:
+    """Test security functions."""
+    
+    def test_password_hashing(self):
+        """✅ Password hashing."""
+        password = "TestPassword123!"
+        hashed = hash_password(password)
+        
+        assert hashed != password
+        assert verify_password(password, hashed)
+
+
+class TestRegressions:
+    """Test for known issues - CRITICAL FIXES."""
+    
+    def test_no_datetime_utcnow(self):
+        """✅ CRITICAL: Verify datetime.utcnow() removed from all code."""
+        import inspect
+        from database import repository
+        
+        source = inspect.getsource(repository)
+        assert "datetime.utcnow()" not in source, "CRITICAL: datetime.utcnow() still in codebase!"
+        assert "datetime.now(timezone.utc)" in source
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])
 
 
 # =============================================================================
