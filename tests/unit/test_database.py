@@ -199,7 +199,7 @@ class TestThemeRepository:
     @pytest.mark.database
     def test_create_theme(self, db_session: Session):
         """Test creating theme."""
-        theme = ThemeRepository.create_theme(
+        theme = ThemeRepository.create(
             db_session,
             topic_id=1,
             theme_name="TestTheme",
@@ -215,7 +215,7 @@ class TestThemeRepository:
     @pytest.mark.database
     def test_get_theme_by_id(self, db_session: Session):
         """Test getting theme by ID."""
-        created = ThemeRepository.create_theme(
+        created = ThemeRepository.create(
             db_session,
             topic_id=1,
             theme_name="Theme1",
@@ -229,7 +229,7 @@ class TestThemeRepository:
     @pytest.mark.database
     def test_get_theme_by_name(self, db_session: Session):
         """Test getting theme by name."""
-        ThemeRepository.create_theme(
+        ThemeRepository.create(
             db_session,
             topic_id=1,
             theme_name="UniqueTheme",
@@ -244,7 +244,7 @@ class TestThemeRepository:
     def test_list_themes(self, db_session: Session):
         """Test listing themes."""
         for i in range(3):
-            ThemeRepository.create_theme(
+            ThemeRepository.create(
                 db_session,
                 topic_id=i,
                 theme_name=f"Theme{i}",

@@ -1,9 +1,9 @@
 """Seed a small, representative corpus and optionally analyze it."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from database.models import SessionLocal, init_db
-from database.repository import upsert_reviews
+from database.connection import get_session, init_db
+from database.repository import ReviewRepository
 from pipelines.analysis_service import analyze_reviews
 
 SAMPLES = [
@@ -24,14 +24,14 @@ SAMPLES = [
 
 if __name__ == "__main__":
     init_db()
-    db = SessionLocal()
-    now = datetime.utcnow()
+    db = get_session()
+    now = datetime.now(timezone.utc)
     payload = [{
         "external_id": f"demo-{i}", "source": source, "app_name": "Demo App",
         "reviewer": f"demo_user_{i}", "rating": rating, "title": None,
         "text": text, "date": now - timedelta(days=i), "metadata": {"demo": True},
     } for i, (source, rating, text) in enumerate(SAMPLES)]
-    inserted, skipped = upsert_reviews(db, payload)
+    inserted, skipped = ReviewRepository.bulk_upsert(db, payload)
     result = analyze_reviews(db, n_themes=4)
     db.close()
     print({"inserted": inserted, "duplicates_skipped": skipped, **result})

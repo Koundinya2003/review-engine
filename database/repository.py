@@ -10,7 +10,7 @@ Provides repository pattern for all database entities with support for:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import and_, desc, func
@@ -87,7 +87,7 @@ class ReviewRepository:
     def create(db: Session, **kwargs) -> ReviewModel:
         """Create new review."""
         if "date" not in kwargs:
-            kwargs["date"] = datetime.utcnow()
+            kwargs["date"] = datetime.now(timezone.utc)
         if "external_id" not in kwargs:
             kwargs["external_id"] = ReviewRepository._generate_external_id(kwargs)
         
@@ -104,7 +104,7 @@ class ReviewRepository:
         if not db_review:
             return None
         
-        kwargs["updated_at"] = datetime.utcnow()
+        kwargs["updated_at"] = datetime.now(timezone.utc)
         for key, value in kwargs.items():
             setattr(db_review, key, value)
         
@@ -116,7 +116,7 @@ class ReviewRepository:
     def update_embedding(db: Session, review_id: int, embedding: list[float]) -> None:
         """Update review embedding."""
         db.query(ReviewModel).filter(ReviewModel.id == review_id).update(
-            {ReviewModel.embedding: embedding, ReviewModel.updated_at: datetime.utcnow()}
+            {ReviewModel.embedding: embedding, ReviewModel.updated_at: datetime.now(timezone.utc)}
         )
         db.commit()
     
@@ -132,7 +132,7 @@ class ReviewRepository:
             {
                 ReviewModel.theme: theme,
                 ReviewModel.theme_confidence: theme_confidence,
-                ReviewModel.updated_at: datetime.utcnow(),
+                ReviewModel.updated_at: datetime.now(timezone.utc),
             }
         )
         db.commit()
@@ -264,7 +264,7 @@ class ThemeRepository:
     def update_count(db: Session, theme_id: int, count: int) -> None:
         """Update theme count."""
         db.query(ThemeModel).filter(ThemeModel.id == theme_id).update(
-            {ThemeModel.count: count, ThemeModel.updated_at: datetime.utcnow()}
+            {ThemeModel.count: count, ThemeModel.updated_at: datetime.now(timezone.utc)}
         )
         db.commit()
     

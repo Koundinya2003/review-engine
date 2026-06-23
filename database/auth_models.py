@@ -6,7 +6,7 @@ Provides user management, JWT token handling, and role-based access control.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, String, Integer, func
 from sqlalchemy.orm import Session
@@ -108,7 +108,7 @@ class UserRepository:
                 if hasattr(user, key):
                     setattr(user, key, value)
             
-            user.updated_at = datetime.utcnow()
+            user.updated_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(user)
             logger.info(f"Updated user: {user.username}")
@@ -134,6 +134,6 @@ class UserRepository:
     def update_last_login(db: Session, user_id: int) -> None:
         """Update last login timestamp."""
         db.query(UserModel).filter(UserModel.id == user_id).update(
-            {UserModel.last_login: datetime.utcnow()}
+            {UserModel.last_login: datetime.now(timezone.utc)}
         )
         db.commit()

@@ -200,9 +200,9 @@ class AnalyticsService:
     @staticmethod
     def get_trend_data(db: Session, days: int = 30) -> dict[str, Any]:
         """Get trend data for the past N days."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         recent_reviews = db.query(ReviewModel).filter(
             ReviewModel.created_at >= cutoff_date

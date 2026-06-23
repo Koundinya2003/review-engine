@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from database.models import SessionLocal, init_db
+from database.connection import get_session, init_db
 from pipelines.analysis_service import analyze_reviews
 
 parser = argparse.ArgumentParser(description="AI-powered review discovery")
@@ -15,7 +15,7 @@ init_db()
 if args.command == "init-db":
     print("Database initialized")
 else:
-    db = SessionLocal()
+    db = get_session()
     try:
         print(analyze_reviews(db, n_themes=args.themes))
     finally:

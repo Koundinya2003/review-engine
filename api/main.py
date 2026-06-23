@@ -8,7 +8,7 @@ Includes middleware, exception handlers, and all service integrations.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,7 +164,7 @@ async def health_check(db: Session = Depends(get_session)) -> HealthResponse:
         
         return HealthResponse(
             status=overall_status,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             database=db_status,
             services=services,
             version="2.0.0",
@@ -173,7 +173,7 @@ async def health_check(db: Session = Depends(get_session)) -> HealthResponse:
         logger.error(f"Health check failed: {e}", exc_info=True)
         return HealthResponse(
             status="unhealthy",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             database="error",
             services={},
             version="2.0.0",
