@@ -1,0 +1,57 @@
+# Core dependencies - PINNED EXACT VERSIONS FOR PRODUCTION
+sqlalchemy==2.0.51
+psycopg2-binary==2.9.10
+alembic==1.13.1
+pgvector==0.2.0
+
+# Embedding & NLP
+sentence-transformers==5.1.1
+bertopic==0.17.4
+scikit-learn==1.7.2
+umap-learn==0.5.5
+# hdbscan==0.8.40  # Commented: incompatible with Python 3.13, uses sklearn.cluster instead
+
+# API
+fastapi==0.138.0
+uvicorn==0.38.0
+pydantic==2.10.1
+pydantic-settings==2.2.1
+python-jose==3.3.0
+passlib==1.7.4
+bcrypt==4.2.0
+
+# Dashboard
+streamlit==1.41.1
+requests==2.32.3
+pandas==2.3.3
+plotly==5.24.1
+streamlit-authenticator==0.3.2
+
+# Utilities
+python-dotenv==1.0.1
+python-multipart==0.0.7
+
+# Collectors (optional - commented out due to version conflicts)
+# app-store-scraper==0.3.5
+# google-play-scraper==1.2.7
+# praw==7.8.1
+
+# Scheduling
+apscheduler==3.11.1
+
+# Monitoring
+prometheus-client==0.20.0
+
+# Testing
+httpx==0.27.2
+pytest==8.4.2
+pytest-asyncio==0.24.0
+pytest-cov==4.1.0
+pytest-mock==3.14.0
+factory-boy==3.3.1
+
+# Development
+black==24.1.1
+isort==5.13.2
+pylint==3.1.0
+mypy==1.8.0

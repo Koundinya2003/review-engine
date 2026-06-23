@@ -1,0 +1,16 @@
+{
+  "cluster_statistics": {
+    "0": {
+      "size": 1,
+      "percentage": 100.0
+    }
+  },
+  "representative_themes": {
+    "0": [
+      "extraction_failed"
+    ]
+  },
+  "model_used": "all-MiniLM-L6-v2",
+  "n_clusters": 8,
+  "total_themes": 1
+}
