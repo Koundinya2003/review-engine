@@ -160,7 +160,7 @@ async def health_check(db: Session = Depends(get_session)) -> HealthResponse:
             "analytics": "ok",
         }
         
-        overall_status = "healthy" if all(s == "ok" for s in services.values() and db_status == "ok") else "degraded"
+        overall_status = "healthy" if (all(s == "ok" for s in services.values()) and db_status == "ok") else "degraded"
         
         return HealthResponse(
             status=overall_status,
