@@ -17,6 +17,8 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     environment:
       DATABASE_URL: postgresql://reviews_user:reviews_password@postgres:5432/reviews_db
+      AUTH_ENABLED: "true"
+      AUTH_SECRET_KEY: "dev-secret-key-change-in-production"
     ports: ["8000:8000"]
     depends_on:
       postgres:
@@ -31,7 +33,7 @@ services:
     build: .
     command: streamlit run dashboard/app.py --server.address=0.0.0.0
     environment:
-      API_URL: http://api:8000
+      API_BASE_URL: http://api:8000
     ports: ["8501:8501"]
     depends_on:
       api:
