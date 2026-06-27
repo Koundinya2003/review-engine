@@ -6,13 +6,18 @@ This module exports application metrics to Prometheus.
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry, generate_latest
-import time
-
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
 # ============================================================================
 # METRICS REGISTRY
 # ============================================================================
+#
+# NOTE: this is a single in-process registry. If this service ever runs
+# under multiple worker processes (e.g. gunicorn with >1 worker), each
+# process gets its own registry and /metrics will only reflect whichever
+# process happened to handle the scrape - counters will appear to reset
+# or undercount. For multi-process deployments, switch to
+# `prometheus_client.multiprocess` with PROMETHEUS_MULTIPROC_DIR set.
 
 registry = CollectorRegistry()
 
@@ -154,9 +159,12 @@ embeddings_total = Gauge(
     registry=registry,
 )
 
+# Default Histogram buckets are tuned for sub-second latencies, not batch
+# counts - explicit buckets give this metric meaningful resolution.
 embedding_batch_size = Histogram(
     "embedding_batch_size",
     "Embedding batch sizes",
+    buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000),
     registry=registry,
 )
 
@@ -183,6 +191,7 @@ search_results = Histogram(
     "search_results",
     "Number of search results",
     ["search_type"],
+    buckets=(0, 1, 5, 10, 20, 50, 100, 250, 500),
     registry=registry,
 )
 
@@ -254,6 +263,6 @@ queue_size = Gauge(
 )
 
 
-def get_metrics():
-    """Get all metrics in Prometheus format."""
+def get_metrics() -> bytes:
+    """Get all metrics in Prometheus text-exposition format."""
     return generate_latest(registry)

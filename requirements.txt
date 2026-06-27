@@ -32,10 +32,10 @@ streamlit-authenticator==0.3.2
 python-dotenv==1.0.1
 python-multipart==0.0.7
 
-# Collectors (optional - commented out due to version conflicts)
-# app-store-scraper==0.3.5
-# google-play-scraper==1.2.7
-# praw==7.8.1
+# Collectors (optional but recommended for full functionality)
+app-store-scraper==0.3.5
+google-play-scraper==1.2.7
+praw==7.8.1
 
 # Scheduling
 apscheduler==3.11.1

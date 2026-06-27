@@ -8,30 +8,33 @@ used throughout the application.
 from .exceptions import (
     AppException,
     AuthenticationError,
+    AuthorizationError,
     ConflictError,
     DatabaseError,
     ErrorCode,
     NotFoundError,
     OperationTimeoutError,
-    PermissionError,
     ServiceUnavailableError,
     ValidationError,
 )
 from .logging import configure_logging, get_logger
+from .metrics import get_metrics
 
 __all__ = [
     # Exceptions
     "AppException",
     "AuthenticationError",
+    "AuthorizationError",
     "ConflictError",
     "DatabaseError",
     "ErrorCode",
     "NotFoundError",
     "OperationTimeoutError",
-    "PermissionError",
     "ServiceUnavailableError",
     "ValidationError",
     # Logging
     "configure_logging",
     "get_logger",
+    # Metrics
+    "get_metrics",
 ]

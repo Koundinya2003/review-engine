@@ -9,19 +9,36 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import sys
-from typing import Any
+from datetime import datetime, timezone
 
 from config import settings
 
+# Attributes that exist on every LogRecord by default. Anything else set
+# on the record (i.e. passed via `extra={...}`) is "custom" and should be
+# surfaced in the JSON output.
+_STANDARD_RECORD_ATTRS = frozenset(logging.LogRecord(
+    "", 0, "", 0, "", (), None
+).__dict__.keys()) | {"message", "asctime"}
+
 
 class JSONFormatter(logging.Formatter):
-    """JSON formatter for structured logging."""
-    
+    """JSON formatter for structured logging.
+
+    Every field passed via `logger.info(..., extra={...})` is included in
+    the output automatically - the previous version only special-cased
+    `correlation_id` and `user_id`, which meant fields like `method`,
+    `path`, `status_code`, `duration_ms`, and `error` (used throughout the
+    middleware and API layers) were silently dropped whenever JSON logging
+    was enabled.
+    """
+
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record as JSON."""
         log_data = {
-            "timestamp": self.formatTime(record),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -29,51 +46,51 @@ class JSONFormatter(logging.Formatter):
             "function": record.funcName,
             "line": record.lineno,
         }
-        
-        # Add exception info if present
+
+        # Pull in every extra field the caller attached, whatever it's named.
+        for key, value in record.__dict__.items():
+            if key not in _STANDARD_RECORD_ATTRS and key not in log_data:
+                log_data[key] = value
+
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
-        
-        # Add custom attributes
-        if hasattr(record, "correlation_id"):
-            log_data["correlation_id"] = record.correlation_id
-        if hasattr(record, "user_id"):
-            log_data["user_id"] = record.user_id
-        
-        return json.dumps(log_data)
+
+        return json.dumps(log_data, default=str)
 
 
 def configure_logging() -> None:
     """Configure logging based on settings."""
-    
-    # Get root logger
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.getLevelName(settings.logging.level))
-    
-    # Remove existing handlers
+
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
-    
-    # Console handler
+
+    formatter = (
+        JSONFormatter()
+        if settings.logging.use_json
+        else logging.Formatter(settings.logging.format)
+    )
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.getLevelName(settings.logging.level))
-    
-    if settings.logging.use_json:
-        formatter = JSONFormatter()
-    else:
-        formatter = logging.Formatter(settings.logging.format)
-    
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
-    
-    # File handler if configured
+
     if settings.logging.file:
-        file_handler = logging.FileHandler(settings.logging.file)
+        # Rotating, not a plain FileHandler, so a long-running process
+        # doesn't grow one log file without bound.
+        file_handler = logging.handlers.RotatingFileHandler(
+            settings.logging.file,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+        )
         file_handler.setLevel(logging.getLevelName(settings.logging.level))
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-    
-    # Suppress noisy loggers
+
+    # Suppress noisy third-party loggers.
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)

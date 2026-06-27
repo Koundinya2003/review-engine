@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from pydantic import BaseModel
 
 from config import settings
 from core import get_logger
@@ -25,14 +26,33 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT security
 security = HTTPBearer(auto_error=False)
 
+# Role hierarchy, defined once and shared by every permission check.
+ROLE_HIERARCHY: dict[str, int] = {
+    "admin": 3,
+    "analyst": 2,
+    "viewer": 1,
+}
+
+# Sentinel id used for the "system" identity when auth is disabled.
+SYSTEM_USER_ID = 0
+
+
+class CurrentUser(BaseModel):
+    """Decoded identity carried by the access token (or the system identity
+    when authentication is disabled)."""
+
+    user_id: int
+    role: str
+    scopes: list[str] = []
+
 
 def hash_password(password: str) -> str:
-    """Hash password."""
+    """Hash a plaintext password for storage."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password."""
+    """Check a plaintext password against a stored hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
@@ -40,38 +60,33 @@ def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
-    """Create JWT access token."""
+    """Create a signed JWT access token."""
     to_encode = data.copy()
-    
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.auth.access_token_expire_minutes
-        )
-    
+
+    expire = datetime.now(timezone.utc) + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.auth.access_token_expire_minutes)
+    )
     to_encode.update({"exp": expire})
-    
-    encoded_jwt = jwt.encode(
+
+    return jwt.encode(
         to_encode,
         settings.auth.secret_key,
         algorithm=settings.auth.algorithm,
     )
-    
-    return encoded_jwt
 
 
 def verify_token(token: str) -> dict:
-    """Verify JWT token."""
+    """Decode and validate a JWT, raising 401 on any failure."""
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.auth.secret_key,
             algorithms=[settings.auth.algorithm],
         )
-        return payload
     except JWTError as e:
-        logger.warning(f"Token verification failed: {e}")
+        logger.warning("token_verification_failed", extra={"error": str(e)})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
@@ -80,69 +95,79 @@ def verify_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-) -> dict:
-    """Get current authenticated user from token."""
+) -> CurrentUser:
+    """Resolve the authenticated identity for the current request.
+
+    Returns a fixed "system" identity when authentication is disabled,
+    otherwise decodes and validates the bearer token.
+    """
     if not settings.auth.enabled:
-        # No authentication required
-        return {"user_id": "system", "role": "admin"}
-    
+        return CurrentUser(user_id=SYSTEM_USER_ID, role="admin", scopes=[])
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication",
         )
-    
-    token = credentials.credentials
-    payload = verify_token(token)
-    
-    user_id: str = payload.get("sub")
-    if not user_id:
+
+    payload = verify_token(credentials.credentials)
+
+    raw_user_id = payload.get("sub")
+    if raw_user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
         )
-    
-    return {
-        "user_id": user_id,
-        "role": payload.get("role", "viewer"),
-        "scopes": payload.get("scopes", []),
-    }
+
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        logger.warning("token_invalid_subject", extra={"sub": raw_user_id})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    return CurrentUser(
+        user_id=user_id,
+        role=payload.get("role", "viewer"),
+        scopes=payload.get("scopes", []),
+    )
 
 
 def require_role(required_role: str):
-    """Decorator to require specific role."""
-    async def role_checker(current_user: dict = Depends(get_current_user)):
-        role_hierarchy = {
-            "admin": 3,
-            "analyst": 2,
-            "viewer": 1,
-        }
-        
-        user_role_level = role_hierarchy.get(current_user.get("role"), 0)
-        required_level = role_hierarchy.get(required_role, 0)
-        
-        if user_role_level < required_level:
+    """Dependency factory: require at least the given role level."""
+
+    required_level = ROLE_HIERARCHY.get(required_role, 0)
+
+    async def role_checker(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        user_level = ROLE_HIERARCHY.get(current_user.role, 0)
+
+        if user_level < required_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
-        
+
         return current_user
-    
+
     return role_checker
 
 
 def require_scope(required_scope: str):
-    """Decorator to require specific scope."""
-    async def scope_checker(current_user: dict = Depends(get_current_user)):
-        scopes = current_user.get("scopes", [])
-        
-        if required_scope not in scopes:
+    """Dependency factory: require a specific scope on the token."""
+
+    async def scope_checker(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        if required_scope not in current_user.scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
-        
+
         return current_user
-    
+
     return scope_checker

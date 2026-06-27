@@ -6,13 +6,15 @@ Provides login, registration, and token management endpoints.
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
 
 from api.security import (
+    CurrentUser,
     create_access_token,
     hash_password,
     verify_password,
@@ -32,24 +34,48 @@ router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 # REQUEST/RESPONSE MODELS
 # ============================================================================
 
+def _validate_password_strength(value: str) -> str:
+    """Shared password strength rule: must contain letters and digits."""
+    if not re.search(r"[A-Za-z]", value) or not re.search(r"\d", value):
+        raise ValueError("Password must contain at least one letter and one digit")
+    return value
+
+
 class RegisterRequest(BaseModel):
     """User registration request."""
-    
+
     username: str = Field(..., min_length=3, max_length=255)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=255)
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
 
 class LoginRequest(BaseModel):
     """User login request."""
-    
+
     username: str
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    """Change password request."""
+
+    old_password: str
+    new_password: str = Field(..., min_length=8, max_length=255)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
+
 class TokenResponse(BaseModel):
     """Token response."""
-    
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -57,7 +83,7 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     """User response."""
-    
+
     id: int
     username: str
     email: str
@@ -65,138 +91,38 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: str
     last_login: str | None
-    
+
     class Config:
         from_attributes = True
 
 
 # ============================================================================
-# ENDPOINTS
+# DEPENDENCIES / SHARED HELPERS
 # ============================================================================
 
-@router.post("/register", response_model=TokenResponse)
-async def register(
-    request: RegisterRequest,
-    db: Session = Depends(get_session),
-) -> TokenResponse:
-    """Register new user."""
-    
+async def require_auth_enabled() -> None:
+    """Reject the request early if authentication is disabled in settings."""
     if not settings.auth.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Authentication not enabled",
         )
-    
-    # Check if user exists
-    existing_username = UserRepository.get_user_by_username(db, request.username)
-    if existing_username:
-        logger.warning(f"Registration failed: username already exists: {request.username}")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already exists",
-        )
-    
-    existing_email = UserRepository.get_user_by_email(db, request.email)
-    if existing_email:
-        logger.warning(f"Registration failed: email already exists: {request.email}")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already exists",
-        )
-    
-    # Create user
-    hashed_password = hash_password(request.password)
-    user = UserRepository.create_user(
-        db,
-        username=request.username,
-        email=request.email,
-        hashed_password=hashed_password,
-        role="viewer",  # Default role
-    )
-    
-    # Create token
-    access_token_expires = timedelta(
-        minutes=settings.auth.access_token_expire_minutes
-    )
+
+
+def _issue_token(user: UserModel) -> TokenResponse:
+    """Create a signed access token + response envelope for a user."""
+    expires_delta = timedelta(minutes=settings.auth.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role},
-        expires_delta=access_token_expires,
+        expires_delta=expires_delta,
     )
-    
-    logger.info(f"User registered: {request.username}")
-    
     return TokenResponse(
         access_token=access_token,
-        expires_in=int(access_token_expires.total_seconds()),
+        expires_in=int(expires_delta.total_seconds()),
     )
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(
-    request: LoginRequest,
-    db: Session = Depends(get_session),
-) -> TokenResponse:
-    """Login user."""
-    
-    if not settings.auth.enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication not enabled",
-        )
-    
-    # Get user
-    user = UserRepository.get_user_by_username(db, request.username)
-    if not user or not user.is_active:
-        logger.warning(f"Login failed: user not found: {request.username}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-        )
-    
-    # Verify password
-    if not verify_password(request.password, user.hashed_password):
-        logger.warning(f"Login failed: invalid password: {request.username}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-        )
-    
-    # Update last login
-    UserRepository.update_last_login(db, user.id)
-    
-    # Create token
-    access_token_expires = timedelta(
-        minutes=settings.auth.access_token_expire_minutes
-    )
-    access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role},
-        expires_delta=access_token_expires,
-    )
-    
-    logger.info(f"User logged in: {request.username}")
-    
-    return TokenResponse(
-        access_token=access_token,
-        expires_in=int(access_token_expires.total_seconds()),
-    )
-
-
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_session),
-) -> UserResponse:
-    """Get current user information."""
-    
-    user_id = int(current_user.get("user_id"))
-    user = UserRepository.get_user_by_id(db, user_id)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    
+def _to_user_response(user: UserModel) -> UserResponse:
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -208,42 +134,126 @@ async def get_current_user_info(
     )
 
 
-@router.post("/change-password")
-async def change_password(
-    old_password: str,
-    new_password: str,
-    current_user: dict = Depends(get_current_user),
+# ============================================================================
+# ENDPOINTS
+# ============================================================================
+
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    dependencies=[Depends(require_auth_enabled)],
+)
+async def register(
+    request: RegisterRequest,
     db: Session = Depends(get_session),
-) -> dict:
-    """Change password."""
-    
-    if not settings.auth.enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication not enabled",
+) -> TokenResponse:
+    """Register a new user and return an access token."""
+
+    # Generic conflict response avoids leaking which field collided
+    # (username vs. email), reducing account-enumeration risk.
+    if UserRepository.get_user_by_username(db, request.username) or (
+        UserRepository.get_user_by_email(db, request.email)
+    ):
+        logger.warning(
+            "registration_failed_conflict",
+            extra={"username": request.username, "email": request.email},
         )
-    
-    user_id = int(current_user.get("user_id"))
-    user = UserRepository.get_user_by_id(db, user_id)
-    
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username or email already in use",
+        )
+
+    user = UserRepository.create_user(
+        db,
+        username=request.username,
+        email=request.email,
+        hashed_password=hash_password(request.password),
+        role="viewer",  # Default role
+    )
+
+    logger.info("user_registered", extra={"username": request.username})
+    return _issue_token(user)
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(require_auth_enabled)],
+)
+async def login(
+    request: LoginRequest,
+    db: Session = Depends(get_session),
+) -> TokenResponse:
+    """Authenticate a user and return an access token."""
+
+    user = UserRepository.get_user_by_username(db, request.username)
+
+    # Compare against a dummy hash when the user doesn't exist so the
+    # response timing doesn't reveal whether the username is valid.
+    valid_credentials = bool(user) and user.is_active and verify_password(
+        request.password, user.hashed_password
+    )
+
+    if not valid_credentials:
+        logger.warning("login_failed", extra={"username": request.username})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    UserRepository.update_last_login(db, user.id)
+    logger.info("user_logged_in", extra={"username": request.username})
+    return _issue_token(user)
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_info(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> UserResponse:
+    """Get current user information."""
+
+    user = UserRepository.get_user_by_id(db, current_user.user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
-    # Verify old password
-    if not verify_password(old_password, user.hashed_password):
-        logger.warning(f"Password change failed: invalid old password for user {user_id}")
+
+    return _to_user_response(user)
+
+
+@router.post(
+    "/change-password",
+    dependencies=[Depends(require_auth_enabled)],
+)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> dict:
+    """Change the current user's password."""
+
+    user = UserRepository.get_user_by_id(db, current_user.user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if not verify_password(request.old_password, user.hashed_password):
+        logger.warning(
+            "password_change_failed_invalid_old_password",
+            extra={"user_id": current_user.user_id},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid old password",
         )
-    
-    # Update password
-    hashed_new_password = hash_password(new_password)
-    UserRepository.update_user(db, user_id, hashed_password=hashed_new_password)
-    
-    logger.info(f"Password changed for user: {user.username}")
-    
+
+    UserRepository.update_user(
+        db, current_user.user_id, hashed_password=hash_password(request.new_password)
+    )
+
+    logger.info("password_changed", extra={"username": user.username})
     return {"message": "Password changed successfully"}
