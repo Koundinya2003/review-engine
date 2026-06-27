@@ -18,7 +18,8 @@ services:
     environment:
       DATABASE_URL: postgresql://reviews_user:reviews_password@postgres:5432/reviews_db
       AUTH_ENABLED: "true"
-      AUTH_SECRET_KEY: "dev-secret-key-change-in-production"
+      AUTH_SECRET_KEY: "${AUTH_SECRET_KEY:-dev-secret-key-change-in-production}"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
     ports: ["8000:8000"]
     depends_on:
       postgres:
@@ -29,15 +30,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
   dashboard:
     build: .
-    command: streamlit run dashboard/app.py --server.address=0.0.0.0
+    command: streamlit run dashboard/app.py --server.address=0.0.0.0 --logger.level=info
     environment:
       API_BASE_URL: http://api:8000
     ports: ["8501:8501"]
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_data:

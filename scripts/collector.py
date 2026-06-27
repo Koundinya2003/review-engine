@@ -54,24 +54,36 @@ def collect_app_store_reviews(
         app.review(how_many=limit, sort_by="RECENT")
         
         reviews = []
-        for review in app.reviews[:limit]:
-            reviews.append({
-                "external_id": review.get("id", f"appstore-{len(reviews)}"),
-                "source": "app_store",
-                "app_name": app_name,
-                "reviewer": review.get("userName", "Anonymous"),
-                "rating": float(review.get("rating", 3)),
-                "title": review.get("title", ""),
-                "text": review.get("review", ""),
-                "date": datetime.fromisoformat(
-                    review.get("date", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00")
-                ),
-                "url": f"https://apps.apple.com/app/id{app_id}",
-                "metadata": {
-                    "source_type": "app_store",
-                    "version": review.get("version", "unknown"),
-                },
-            })
+        for idx, review in enumerate(app.reviews[:limit]):
+            try:
+                date_str = review.get("date", "")
+                if date_str:
+                    try:
+                        review_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    except (ValueError, AttributeError):
+                        logger.warning(f"Could not parse App Store date: {date_str}, using current time")
+                        review_date = datetime.now(timezone.utc)
+                else:
+                    review_date = datetime.now(timezone.utc)
+                
+                reviews.append({
+                    "external_id": review.get("id", f"appstore-{app_id}-{idx}"),
+                    "source": "app_store",
+                    "app_name": app_name,
+                    "reviewer": review.get("userName", "Anonymous"),
+                    "rating": float(review.get("rating", 3)),
+                    "title": review.get("title", ""),
+                    "text": review.get("review", ""),
+                    "date": review_date,
+                    "url": f"https://apps.apple.com/app/id{app_id}",
+                    "metadata": {
+                        "source_type": "app_store",
+                        "version": review.get("version", "unknown"),
+                    },
+                })
+            except Exception as e:
+                logger.warning(f"Error parsing App Store review {idx}: {e}, skipping")
+                continue
         
         logger.info(f"Collected {len(reviews)} App Store reviews")
         return reviews
@@ -128,25 +140,33 @@ def collect_play_store_reviews(
         )
         
         reviews = []
-        for review in review_list[:limit]:
-            reviews.append({
-                "external_id": review.get("reviewId", f"playstore-{len(reviews)}"),
-                "source": "play_store",
-                "app_name": app_name,
-                "reviewer": review.get("userName", "Anonymous"),
-                "rating": float(review.get("score", 3)),
-                "title": review.get("reviewTitle", ""),
-                "text": review.get("reviewText", ""),
-                "date": datetime.fromtimestamp(
-                    review.get("reviewCreatedVersion", 0) / 1000,
-                    tz=timezone.utc
-                ),
-                "url": f"https://play.google.com/store/apps/details?id={package_name}",
-                "metadata": {
-                    "source_type": "play_store",
-                    "version": review.get("appVersion", "unknown"),
-                },
-            })
+        for idx, review in enumerate(review_list[:limit]):
+            try:
+                timestamp = review.get("at", 0)
+                if not isinstance(timestamp, (int, float)) or timestamp == 0:
+                    logger.warning(f"Invalid or missing timestamp for Play Store review {idx}, using current time")
+                    review_date = datetime.now(timezone.utc)
+                else:
+                    review_date = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
+                
+                reviews.append({
+                    "external_id": review.get("reviewId", f"playstore-{package_name}-{idx}"),
+                    "source": "play_store",
+                    "app_name": app_name,
+                    "reviewer": review.get("userName", "Anonymous"),
+                    "rating": float(review.get("score", 3)),
+                    "title": review.get("reviewTitle", ""),
+                    "text": review.get("reviewText", ""),
+                    "date": review_date,
+                    "url": f"https://play.google.com/store/apps/details?id={package_name}",
+                    "metadata": {
+                        "source_type": "play_store",
+                        "version": review.get("appVersion", "unknown"),
+                    },
+                })
+            except Exception as e:
+                logger.warning(f"Error parsing Play Store review {idx}: {e}, skipping")
+                continue
         
         logger.info(f"Collected {len(reviews)} Play Store reviews")
         return reviews
@@ -222,23 +242,29 @@ def collect_reddit_reviews(
         
         for post in subreddit.new(limit=limit):
             if post.is_self:  # Text posts only
-                reviews.append({
-                    "external_id": post.id,
-                    "source": "reddit",
-                    "app_name": app_name,
-                    "reviewer": post.author.name if post.author else "Anonymous",
-                    "rating": None,  # Reddit posts don't have ratings
-                    "title": post.title,
-                    "text": post.selftext,
-                    "date": datetime.fromtimestamp(post.created_utc, tz=timezone.utc),
-                    "url": f"https://reddit.com{post.permalink}",
-                    "metadata": {
-                        "source_type": "reddit",
-                        "subreddit": subreddit_name,
-                        "score": post.score,
-                        "comments": post.num_comments,
-                    },
-                })
+                try:
+                    review_date = datetime.fromtimestamp(post.created_utc, tz=timezone.utc)
+                    
+                    reviews.append({
+                        "external_id": post.id,
+                        "source": "reddit",
+                        "app_name": app_name,
+                        "reviewer": post.author.name if post.author else "Anonymous",
+                        "rating": None,  # Reddit posts don't have ratings
+                        "title": post.title,
+                        "text": post.selftext,
+                        "date": review_date,
+                        "url": f"https://reddit.com{post.permalink}",
+                        "metadata": {
+                            "source_type": "reddit",
+                            "subreddit": subreddit_name,
+                            "score": post.score,
+                            "comments": post.num_comments,
+                        },
+                    })
+                except Exception as e:
+                    logger.warning(f"Error parsing Reddit post {post.id}: {e}, skipping")
+                    continue
         
         logger.info(f"Collected {len(reviews)} Reddit discussions")
         return reviews

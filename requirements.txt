@@ -1,58 +1,58 @@
-# Core dependencies - PINNED EXACT VERSIONS FOR PRODUCTION
+# Core dependencies - PINNED EXACT VERSIONS FOR PRODUCTION (stable releases only)
 sqlalchemy==2.0.51
 psycopg2-binary==2.9.10
 alembic==1.13.1
 pgvector==0.2.0
 
-# Embedding & NLP
-sentence-transformers==5.1.1
-bertopic==0.17.4
-scikit-learn==1.7.2
+# Embedding & NLP (stable releases)
+sentence-transformers==2.3.1
+bertopic==0.16.2
+scikit-learn==1.4.1
 umap-learn==0.5.5
 # hdbscan==0.8.40  # Commented: incompatible with Python 3.13, uses sklearn.cluster instead
 
-# API
-fastapi==0.138.0
-uvicorn==0.38.0
-pydantic==2.10.1
-pydantic-settings==2.2.1
-email-validator==2.3.0
+# API (stable releases)
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+email-validator==2.1.0
 python-jose==3.3.0
 passlib==1.7.4
-bcrypt==4.2.0
+bcrypt==4.1.1
 
-# Dashboard
-streamlit==1.41.1
-requests==2.32.3
-pandas==2.3.3
-plotly==5.24.1
-streamlit-authenticator==0.3.2
+# Dashboard (stable releases)
+streamlit==1.31.1
+requests==2.31.0
+pandas==2.1.4
+plotly==5.18.0
+streamlit-authenticator==0.3.0
 
-# Utilities
-python-dotenv==1.0.1
-python-multipart==0.0.7
+# Utilities (stable releases)
+python-dotenv==1.0.0
+python-multipart==0.0.6
 
-# Collectors (optional but recommended for full functionality)
+# Collectors (stable releases)
 app-store-scraper==0.3.5
-google-play-scraper==1.2.7
-praw==7.8.1
+google-play-scraper==1.2.6
+praw==7.7.0
 
-# Scheduling
-apscheduler==3.11.1
+# Scheduling (stable release)
+apscheduler==3.10.4
 
-# Monitoring
-prometheus-client==0.20.0
+# Monitoring (stable release)
+prometheus-client==0.19.0
 
-# Testing
-httpx==0.27.2
-pytest==8.4.2
-pytest-asyncio==0.24.0
+# Testing (stable releases)
+httpx==0.25.2
+pytest==7.4.3
+pytest-asyncio==0.22.1
 pytest-cov==4.1.0
-pytest-mock==3.14.0
-factory-boy==3.3.1
+pytest-mock==3.12.0
+factory-boy==3.3.0
 
-# Development
-black==24.1.1
+# Development (stable releases)
+black==23.12.1
 isort==5.13.2
-pylint==3.1.0
-mypy==1.8.0
+pylint==3.0.3
+mypy==1.7.1

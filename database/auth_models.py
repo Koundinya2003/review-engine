@@ -17,6 +17,11 @@ from core import get_logger
 logger = get_logger(__name__)
 
 
+def utcnow() -> datetime:
+    """Return current UTC time (timezone-aware)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 # ============================================================================
 # USER MODEL
 # ============================================================================
@@ -32,8 +37,8 @@ class UserModel(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(50), default="viewer")  # admin, analyst, viewer
     is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     last_login = Column(DateTime, nullable=True)
     
     def __repr__(self):
